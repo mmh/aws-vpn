@@ -181,6 +181,53 @@ t_toggle_disconnect() {
   assert_contains "$out" "✓ Disconnected from dev (was connected 12:34)" "disconnect message with uptime"
 }
 
+t_all() {
+  connected stage
+  run_vpn all
+  assert_eq "$rc" 0 "all exit code"
+  assert_eq "$(calls connect | awk '{print $3}' | paste -sd,)" "dev,prod,prod-us" "all connects missing profiles in import order"
+  assert_contains "$out" "> Already connected to stage" "all reports already connected"
+}
+
+t_disconnect_all() {
+  connected dev stage
+  run_vpn disconnect all
+  assert_eq "$rc" 0 "disconnect all exit code"
+  assert_eq "$(calls disconnect | awk '{print $3}' | paste -sd,)" "dev,stage" "disconnect all hits every active profile"
+}
+
+t_disconnect_all_idle() {
+  run_vpn down all
+  assert_eq "$rc" 0 "disconnect all idle exit code"
+  assert_eq "$out" "> Not connected" "disconnect all idle output"
+}
+
+t_disconnect_single_implicit() {
+  connected prod
+  run_vpn disconnect
+  assert_eq "$(calls disconnect)" "disconnect --profile-name prod" "sole active profile disconnected without argument"
+}
+
+t_disconnect_picker() {
+  connected dev stage
+  out=$(printf '2\n' | VPN_NO_FZF=1 "$root/vpn" disconnect 2>&1)
+  rc=$?
+  assert_eq "$rc" 0 "picker disconnect exit code"
+  assert_eq "$(calls disconnect)" "disconnect --profile-name stage" "picker choice 2 disconnects stage"
+}
+
+t_disconnect_named() {
+  connected dev
+  run_vpn disconnect dev
+  assert_eq "$(calls disconnect)" "disconnect --profile-name dev" "named disconnect"
+}
+
+t_disconnect_named_idle() {
+  run_vpn disconnect dev
+  assert_eq "$rc" 1 "named disconnect of idle profile exit code"
+  assert_contains "$out" "✗ Not connected to dev" "named disconnect of idle profile message"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
@@ -195,6 +242,13 @@ test_case "connect prints each status once" t_connect_messages_once
 test_case "connect times out and cancels" t_connect_timeout
 test_case "connect fails on unknown status" t_connect_failure_status
 test_case "toggle disconnects an active profile" t_toggle_disconnect
+test_case "all connects what is down" t_all
+test_case "disconnect all" t_disconnect_all
+test_case "disconnect all when idle" t_disconnect_all_idle
+test_case "disconnect without argument, one active" t_disconnect_single_implicit
+test_case "disconnect without argument, picker" t_disconnect_picker
+test_case "disconnect named profile" t_disconnect_named
+test_case "disconnect named idle profile" t_disconnect_named_idle
 
 echo
 echo "passed: $pass  failed: $fail"
