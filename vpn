@@ -42,13 +42,75 @@ Profiles are the names known to ${BOLD}aws-vpn-client list-profiles${RESET}, in 
 EOF
 }
 
+# --- daemon CLI --------------------------------------------------------------
+require() {  # require <binary> <hint>
+  command -v "$1" > /dev/null 2>&1 || die "$1 not found, $2"
+}
+
+# Run aws-vpn-client and print its stdout. The 6.x CLI prints success JSON on
+# stdout (exit 0), {"status":"Error","message":...} on stderr (exit 1), plain
+# usage errors on stderr (exit 2), and fails without JSON when the daemon is down.
+cli_text() {
+  local out errfile errtxt msg
+  errfile=$(mktemp)
+  if out=$(aws-vpn-client "$@" 2> "$errfile"); then
+    rm -f "$errfile"
+    printf '%s' "$out"
+    return 0
+  fi
+  errtxt=$(< "$errfile")
+  rm -f "$errfile"
+  if msg=$(jq -er '.message' <<< "$errtxt" 2> /dev/null); then
+    die "$msg"
+  fi
+  die "AWS VPN Client daemon not reachable: systemctl status aws-client-vpn-daemon"
+}
+
+cli() {  # like cli_text, but the output must be JSON
+  local out
+  out=$(cli_text "$@")
+  jq -e . <<< "$out" > /dev/null 2>&1 \
+    || die "AWS VPN Client daemon not reachable: systemctl status aws-client-vpn-daemon"
+  printf '%s' "$out"
+}
+
+# --- data helpers ------------------------------------------------------------
+profiles() {  # slugs, one per line, in import order
+  cli list-profiles | jq -r 'sort_by(.["imported-at"]) | .[]["profile-name"]'
+}
+
+require_profile() {  # die unless $1 is a known slug
+  local list
+  list=$(profiles)
+  grep -qxF -- "$1" <<< "$list" \
+    || die "Unknown profile '$1'. Available: $(paste -sd' ' <<< "$list")"
+}
+
+# --- commands ----------------------------------------------------------------
+cmd_list() {
+  local act p
+  act=$(cli list-connections | jq -r '.[] | select(.["connection-status"] == "Connected") | .["profile-name"]')
+  while IFS= read -r p; do
+    if grep -qxF -- "$p" <<< "$act"; then
+      printf '%s●%s %s\n' "$GREEN" "$RESET" "$p"
+    else
+      printf '%s○%s %s\n' "$DIM" "$RESET" "$p"
+    fi
+  done < <(profiles)
+}
+
 # --- dispatch ----------------------------------------------------------------
 main() {
   case "${1:-}" in
     -h|--help)    usage; exit 0 ;;
     -v|--version) echo "aws-vpn $VERSION"; exit 0 ;;
+  esac
+  require aws-vpn-client "install AWS VPN Client 6.x"
+  require jq "install jq"
+  case "${1:-}" in
+    list|ls)      cmd_list ;;
     -*)           usage >&2; exit 1 ;;
-    *)            die "not implemented yet" ;;
+    *)            require_profile "$1"; die "not implemented yet" ;;
   esac
 }
 

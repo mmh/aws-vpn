@@ -93,8 +93,40 @@ t_help() {
   assert_contains "$out" "prompt" "help lists prompt"
 }
 
+t_list_order() {
+  connected stage
+  run_vpn list
+  assert_eq "$rc" 0 "list exit code"
+  assert_eq "$out" $'○ dev\n● stage\n○ prod\n○ prod-us' "list follows imported-at order with markers"
+}
+
+t_unknown_slug() {
+  run_vpn nope
+  assert_eq "$rc" 1 "unknown slug exit code"
+  assert_contains "$out" "Unknown profile 'nope'" "unknown slug message"
+  assert_contains "$out" "dev stage prod prod-us" "unknown slug lists valid ones"
+}
+
+t_daemon_down() {
+  touch "$VPN_STUB_DIR/fail"
+  run_vpn list
+  assert_eq "$rc" 1 "daemon down exit code"
+  assert_contains "$out" "AWS VPN Client daemon not reachable: systemctl status aws-client-vpn-daemon" "daemon down hint"
+}
+
+t_cli_error_json() {
+  echo "Maximum number of connections reached" > "$VPN_STUB_DIR/error-connect"
+  run_vpn dev
+  assert_eq "$rc" 1 "CLI error exit code"
+  assert_contains "$out" "✗ Maximum number of connections reached" "CLI error message shown verbatim"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
+test_case "list follows import order" t_list_order
+test_case "rejects unknown slug" t_unknown_slug
+test_case "reports daemon down" t_daemon_down
+test_case "maps CLI error JSON" t_cli_error_json
 
 echo
 echo "passed: $pass  failed: $fail"

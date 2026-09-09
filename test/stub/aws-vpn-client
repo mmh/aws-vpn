@@ -8,6 +8,7 @@
 #   calls.log         every invocation, one per line
 #   fail              when present every call exits 1 with no output
 #   error-<cmd>       when present, <cmd> fails with its content as the error message
+# shellcheck disable=SC2016  # jq filters use $p on purpose
 set -euo pipefail
 d="${VPN_STUB_DIR:?VPN_STUB_DIR not set}"
 printf '%s\n' "$*" >> "$d/calls.log"
