@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# vpn - fzf picker, toggle and shell-prompt helper on top of the AWS VPN Client 6.x CLI.
+# https://github.com/mmh/aws-vpn
+set -euo pipefail
+
+VERSION="0.1.0"
+CONNECT_TIMEOUT="${VPN_CONNECT_TIMEOUT:-180}"
+POLL_INTERVAL="${VPN_POLL_INTERVAL:-0.5}"
+LOG_DIR="${VPN_LOG_DIR:-/var/log/awsvpnclient}"
+
+# --- output ------------------------------------------------------------------
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  BOLD=$'\e[1m' DIM=$'\e[2m' RED=$'\e[31m' GREEN=$'\e[32m' YELLOW=$'\e[33m' CYAN=$'\e[36m' RESET=$'\e[0m'
+else
+  BOLD="" DIM="" RED="" GREEN="" YELLOW="" CYAN="" RESET=""
+fi
+step()    { printf '%s==>%s %s\n' "$BOLD" "$RESET" "$*"; }
+info()    { printf '%s>%s %s\n' "$CYAN" "$RESET" "$*"; }
+success() { printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
+warn()    { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
+err()     { printf '%s✗%s %s\n' "$RED" "$RESET" "$*" >&2; }
+die()     { err "$@"; exit 1; }
+
+usage() {
+  cat <<EOF
+${BOLD}Usage:${RESET} vpn ${DIM}[command]${RESET}
+
+  ${CYAN}vpn${RESET}                      Pick a profile to connect or disconnect
+  ${CYAN}vpn${RESET} ${DIM}<profile>${RESET}            Connect, or disconnect if already connected
+
+${BOLD}Commands:${RESET}
+  ${CYAN}all${RESET}                      Connect every profile that is not connected
+  ${CYAN}status${RESET}                   Show active connections
+  ${CYAN}disconnect${RESET} ${DIM}[profile|all]${RESET}  Disconnect one, several (picker) or all  ${DIM}(alias: down)${RESET}
+  ${CYAN}list${RESET}                     List profiles                            ${DIM}(alias: ls)${RESET}
+  ${CYAN}logs${RESET} ${DIM}[profile]${RESET}           Tail the daemon log
+  ${CYAN}prompt${RESET}                   Connection indicator for the shell prompt
+  ${CYAN}-v${RESET}, ${CYAN}--version${RESET}            Print version
+  ${CYAN}-h${RESET}, ${CYAN}--help${RESET}               This help
+
+Profiles are the names known to ${BOLD}aws-vpn-client list-profiles${RESET}, in import order.
+EOF
+}
+
+# --- dispatch ----------------------------------------------------------------
+main() {
+  case "${1:-}" in
+    -h|--help)    usage; exit 0 ;;
+    -v|--version) echo "aws-vpn $VERSION"; exit 0 ;;
+    -*)           usage >&2; exit 1 ;;
+    *)            die "not implemented yet" ;;
+  esac
+}
+
+main "$@"

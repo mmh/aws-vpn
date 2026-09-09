@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Stub of the AWS VPN Client 6.x CLI for tests. All state lives in $VPN_STUB_DIR:
+#   profiles.json     what list-profiles prints
+#   connections.json  what list-connections prints; connect/disconnect mutate it
+#   status-sequence   one status per line for successive get-connection-status
+#                     calls; the last line repeats forever; optional
+#   config-<slug>     what get-config prints for <slug>
+#   calls.log         every invocation, one per line
+#   fail              when present every call exits 1 with no output
+#   error-<cmd>       when present, <cmd> fails with its content as the error message
+set -euo pipefail
+d="${VPN_STUB_DIR:?VPN_STUB_DIR not set}"
+printf '%s\n' "$*" >> "$d/calls.log"
+[[ -e "$d/fail" ]] && exit 1
+
+cmd="${1:-}"
+shift || true
+profile=""
+while (($#)); do
+  case "$1" in
+    --profile-name) profile="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+err() {
+  printf '{\n  "status": "Error",\n  "message": "%s"\n}\n' "$1" >&2
+  exit 1
+}
+[[ -f "$d/error-$cmd" ]] && err "$(< "$d/error-$cmd")"
+has_profile() {
+  jq -e --arg p "$1" 'any(.[]; .["profile-name"] == $p)' "$d/profiles.json" > /dev/null
+}
+is_connected() {
+  jq -e --arg p "$1" 'any(.[]; .["profile-name"] == $p)' "$d/connections.json" > /dev/null
+}
+write_connections() {  # $1 = jq filter applied to connections.json
+  local tmp
+  tmp=$(mktemp)
+  jq --arg p "$profile" "$1" "$d/connections.json" > "$tmp"
+  mv "$tmp" "$d/connections.json"
+}
+
+case "$cmd" in
+  list-profiles)
+    cat "$d/profiles.json" ;;
+  list-connections)
+    cat "$d/connections.json" ;;
+  get-config)
+    has_profile "$profile" || err "Profile not found"
+    cat "$d/config-$profile" ;;
+  get-connection-status)
+    has_profile "$profile" || err "Profile not found"
+    if [[ -s "$d/status-sequence" ]]; then
+      status=$(head -n 1 "$d/status-sequence")
+      if (( $(wc -l < "$d/status-sequence") > 1 )); then
+        sed -i '1d' "$d/status-sequence"
+      fi
+    elif is_connected "$profile"; then
+      status=Connected
+    else
+      status=NotConnected
+    fi
+    printf '{\n  "connection-status": "%s"\n}\n' "$status" ;;
+  connect)
+    has_profile "$profile" || err "Profile '$profile' not found"
+    write_connections '. + [{"profile-name": $p, "initiated-by": "test", "connection-status": "Connected", "last-updated-at": "2026-09-09T09:00:00+02:00"}]'
+    printf '{\n  "status": "WaitingForIdentity"\n}\n' ;;
+  disconnect)
+    is_connected "$profile" || err "Profile is not connected"
+    write_connections 'map(select(.["profile-name"] != $p))' ;;
+  -V|--version)
+    echo "aws-vpn-client 6.0.1" ;;
+  *)
+    echo "error: unrecognized subcommand '$cmd'" >&2
+    exit 2 ;;
+esac
