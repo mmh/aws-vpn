@@ -329,6 +329,14 @@ t_completion_logs_arg() {
   assert_eq "$joined" "prod prod-us" "logs completes matching slugs only"
 }
 
+t_connect_no_stdin() {
+  touch "$VPN_STUB_DIR/needs-stdin"
+  out=$(sleep 3 | timeout 2 "$root/vpn" dev 2>&1)
+  rc=$?
+  assert_eq "$rc" 1 "connect does not hang on a CLI prompt"
+  assert_contains "$out" "✗ Username required" "CLI prompt error surfaces as a message"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
@@ -343,6 +351,7 @@ test_case "connect prints each status once" t_connect_messages_once
 test_case "connect times out and cancels" t_connect_timeout
 test_case "connect fails on unknown status" t_connect_failure_status
 test_case "toggle disconnects an active profile" t_toggle_disconnect
+test_case "connect never inherits stdin" t_connect_no_stdin
 test_case "all connects what is down" t_all
 test_case "disconnect all" t_disconnect_all
 test_case "disconnect all when idle" t_disconnect_all_idle

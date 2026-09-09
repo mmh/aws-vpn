@@ -50,16 +50,21 @@ require() {  # require <binary> <hint>
 # Run aws-vpn-client and print its stdout. The 6.x CLI prints success JSON on
 # stdout (exit 0), {"status":"Error","message":...} on stderr (exit 1), plain
 # usage errors on stderr (exit 2), and fails without JSON when the daemon is down.
+# stdin is /dev/null so an interactive prompt (e.g. username for a non-SAML
+# profile) fails instead of hanging; stdout goes to a file, not a pipe, so a
+# browser the CLI spawns cannot keep the capture open.
 cli_text() {
-  local out errfile errtxt msg
+  local outfile errfile rc=0 errtxt msg
+  outfile=$(mktemp)
   errfile=$(mktemp)
-  if out=$(aws-vpn-client "$@" 2> "$errfile"); then
-    rm -f "$errfile"
-    printf '%s' "$out"
+  aws-vpn-client "$@" < /dev/null > "$outfile" 2> "$errfile" || rc=$?
+  if (( rc == 0 )); then
+    cat "$outfile"
+    rm -f "$outfile" "$errfile"
     return 0
   fi
   errtxt=$(< "$errfile")
-  rm -f "$errfile"
+  rm -f "$outfile" "$errfile"
   if msg=$(jq -er '.message' <<< "$errtxt" 2> /dev/null); then
     die "$msg"
   fi

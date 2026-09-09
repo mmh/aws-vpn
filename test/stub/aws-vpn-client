@@ -8,6 +8,7 @@
 #   calls.log         every invocation, one per line
 #   fail              when present every call exits 1 with no output
 #   error-<cmd>       when present, <cmd> fails with its content as the error message
+#   needs-stdin       when present, connect reads a line from stdin (simulates a username prompt)
 # shellcheck disable=SC2016  # jq filters use $p on purpose
 set -euo pipefail
 d="${VPN_STUB_DIR:?VPN_STUB_DIR not set}"
@@ -65,6 +66,9 @@ case "$cmd" in
     printf '{\n  "connection-status": "%s"\n}\n' "$status" ;;
   connect)
     has_profile "$profile" || err "Profile '$profile' not found"
+    if [[ -e "$d/needs-stdin" ]]; then
+      read -r _line || err "Username required"
+    fi
     write_connections '. + [{"profile-name": $p, "initiated-by": "test", "connection-status": "Connected", "last-updated-at": "2026-09-09T09:00:00+02:00"}]'
     printf '{\n  "status": "WaitingForIdentity"\n}\n' ;;
   disconnect)
