@@ -277,6 +277,29 @@ t_picker_cancel() {
   assert_eq "$(calls connect)$(calls disconnect)" "" "cancelled picker does nothing"
 }
 
+t_logs_filtered() {
+  local logdir
+  logdir=$(mktemp -d)
+  printf 'x profile=dev one\ny profile=stage two\nz profile=dev three\n' > "$logdir/aws_vpn_client_daemon_20260909.log"
+  out=$(VPN_LOG_DIR="$logdir" timeout 0.5 "$root/vpn" logs dev 2>&1)
+  rc=$?
+  rm -rf "$logdir"
+  assert_eq "$rc" 124 "logs keeps tailing until killed"
+  assert_contains "$out" "profile=dev one" "logs shows dev lines"
+  assert_contains "$out" "profile=dev three" "logs shows later dev lines"
+  assert_eq "$(grep -c 'profile=stage' <<< "$out")" 0 "logs filters other profiles"
+}
+
+t_logs_missing() {
+  local logdir
+  logdir=$(mktemp -d)
+  out=$(VPN_LOG_DIR="$logdir" "$root/vpn" logs 2>&1)
+  rc=$?
+  rm -rf "$logdir"
+  assert_eq "$rc" 1 "logs exit code without log file"
+  assert_contains "$out" "No daemon log found in $logdir" "logs missing message"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
@@ -305,6 +328,8 @@ test_case "prompt daemon down" t_prompt_daemon_down
 test_case "picker connects the chosen profile" t_picker_connect
 test_case "picker disconnects the chosen profile" t_picker_disconnect
 test_case "picker cancel does nothing" t_picker_cancel
+test_case "logs filtered by profile" t_logs_filtered
+test_case "logs without a log file" t_logs_missing
 
 echo
 echo "passed: $pass  failed: $fail"

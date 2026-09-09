@@ -267,6 +267,18 @@ cmd_select() {  # interactive picker, toggles the chosen profile
   cmd_toggle "$slug"
 }
 
+cmd_logs() {  # cmd_logs [slug]; tails the newest daemon log, filtered by profile when given
+  local slug="${1:-}" file
+  # shellcheck disable=SC2012  # need mtime ordering
+  file=$(ls -1t "$LOG_DIR"/aws_vpn_client_daemon_*.log 2> /dev/null | head -n 1) || true
+  [[ -n $file ]] || die "No daemon log found in ${LOG_DIR}"
+  if [[ -n $slug ]]; then
+    tail -n 200 -F "$file" | grep --line-buffered -F "profile=${slug}"
+  else
+    tail -n 200 -F "$file"
+  fi
+}
+
 cmd_prompt() {  # shell prompt indicator; never noisy, never slow, always exit 0
   local conns act all total p out=""
   conns=$(timeout 1 aws-vpn-client list-connections 2> /dev/null) || return 0
@@ -302,6 +314,7 @@ main() {
     all)             cmd_all ;;
     disconnect|down) cmd_disconnect "${2:-}" ;;
     status|st)    cmd_status ;;
+    logs)            cmd_logs "${2:-}" ;;
     list|ls)      cmd_list ;;
     -*)           usage >&2; exit 1 ;;
     *)            cmd_toggle "$1" ;;
