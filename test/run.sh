@@ -140,6 +140,47 @@ t_status_long_uptime() {
   assert_eq "$out" "✓ Connected to dev (eu-central-1) 01:00:17" "uptime over an hour uses HH:MM:SS"
 }
 
+t_connect() {
+  printf 'WaitingForIdentity\nConnecting\nConnected\n' > "$VPN_STUB_DIR/status-sequence"
+  run_vpn dev
+  assert_eq "$rc" 0 "connect exit code"
+  assert_eq "$(calls connect)" "connect --profile-name dev" "connect called once for dev"
+  assert_contains "$out" "==> Connecting to dev" "connect step line"
+  assert_contains "$out" "> Waiting for browser SSO" "SSO wait message"
+  assert_contains "$out" "> Establishing tunnel" "tunnel message"
+  assert_contains "$out" "✓ Connected to dev (eu-central-1)" "connect success line"
+}
+
+t_connect_messages_once() {
+  printf 'Connecting\nConnecting\nConnecting\nConnected\n' > "$VPN_STUB_DIR/status-sequence"
+  run_vpn dev
+  assert_eq "$(grep -c 'Establishing tunnel' <<< "$out")" 1 "repeated status printed once"
+}
+
+t_connect_timeout() {
+  printf 'Connecting\n' > "$VPN_STUB_DIR/status-sequence"
+  run_vpn dev
+  assert_eq "$rc" 1 "timeout exit code"
+  assert_contains "$out" "Timed out after 2s waiting for dev" "timeout message"
+  assert_eq "$(calls disconnect)" "disconnect --profile-name dev" "timeout cancels the attempt"
+}
+
+t_connect_failure_status() {
+  printf 'Connecting\nFailed\n' > "$VPN_STUB_DIR/status-sequence"
+  run_vpn dev
+  assert_eq "$rc" 1 "failure exit code"
+  assert_contains "$out" "✗ Connection to dev failed: Failed" "failure message carries the status"
+}
+
+t_toggle_disconnect() {
+  connected dev
+  run_vpn dev
+  assert_eq "$rc" 0 "toggle disconnect exit code"
+  assert_eq "$(calls disconnect)" "disconnect --profile-name dev" "disconnect called for dev"
+  assert_eq "$(calls connect)" "" "connect not called"
+  assert_contains "$out" "✓ Disconnected from dev (was connected 12:34)" "disconnect message with uptime"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
@@ -149,6 +190,11 @@ test_case "maps CLI error JSON" t_cli_error_json
 test_case "status when idle" t_status_none
 test_case "status with connections" t_status_connected
 test_case "status uptime over an hour" t_status_long_uptime
+test_case "connect polls to Connected" t_connect
+test_case "connect prints each status once" t_connect_messages_once
+test_case "connect times out and cancels" t_connect_timeout
+test_case "connect fails on unknown status" t_connect_failure_status
+test_case "toggle disconnects an active profile" t_toggle_disconnect
 
 echo
 echo "passed: $pass  failed: $fail"

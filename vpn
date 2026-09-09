@@ -133,6 +133,65 @@ cmd_list() {
   done < <(profiles)
 }
 
+# --- connect / disconnect ----------------------------------------------------
+cancel_connect() {  # SIGINT while waiting: cancel the pending attempt in the daemon
+  trap - INT
+  echo
+  aws-vpn-client disconnect --profile-name "$1" > /dev/null 2>&1 || true
+  warn "Cancelled connection to $1"
+  exit 130
+}
+
+connect_profile() {
+  local slug="$1" status region shown="" deadline
+  step "Connecting to ${BOLD}${slug}${RESET}"
+  cli connect --profile-name "$slug" > /dev/null
+  # shellcheck disable=SC2064  # expand $slug now, that is the point
+  trap "cancel_connect '$slug'" INT
+  deadline=$(( $(date +%s) + CONNECT_TIMEOUT ))
+  while :; do
+    status=$(cli get-connection-status --profile-name "$slug" | jq -r '.["connection-status"]')
+    case "$status" in
+      Connected)
+        trap - INT
+        region=$(region_of "$slug")
+        success "Connected to ${BOLD}${slug}${RESET}${region:+ ${DIM}(${region})${RESET}}"
+        return 0 ;;
+      WaitingForIdentity)
+        [[ $shown == *W* ]] || { info "Waiting for browser SSO..."; shown+=W; } ;;
+      Connecting)
+        [[ $shown == *C* ]] || { info "Establishing tunnel..."; shown+=C; } ;;
+      *)
+        trap - INT
+        die "Connection to ${slug} failed: ${status}" ;;
+    esac
+    if (( $(date +%s) >= deadline )); then
+      trap - INT
+      aws-vpn-client disconnect --profile-name "$slug" > /dev/null 2>&1 || true
+      die "Timed out after ${CONNECT_TIMEOUT}s waiting for ${slug}"
+    fi
+    sleep "$POLL_INTERVAL"
+  done
+}
+
+disconnect_profile() {
+  local slug="$1" ts up=""
+  ts=$(active | awk -F'\t' -v s="$slug" '$1 == s { print $2 }')
+  [[ -n $ts ]] && up=$(uptime_since "$ts")
+  step "Disconnecting from ${BOLD}${slug}${RESET}"
+  cli_text disconnect --profile-name "$slug" > /dev/null   # prints nothing on success, so no JSON check
+  success "Disconnected from ${BOLD}${slug}${RESET}${up:+ ${DIM}(was connected ${up})${RESET}}"
+}
+
+cmd_toggle() {
+  require_profile "$1"
+  if is_active "$1"; then
+    disconnect_profile "$1"
+  else
+    connect_profile "$1"
+  fi
+}
+
 cmd_status() {
   local slug ts region n=0
   while IFS=$'\t' read -r slug ts; do
@@ -156,7 +215,7 @@ main() {
     status|st)    cmd_status ;;
     list|ls)      cmd_list ;;
     -*)           usage >&2; exit 1 ;;
-    *)            require_profile "$1"; die "not implemented yet" ;;
+    *)            cmd_toggle "$1" ;;
   esac
 }
 
