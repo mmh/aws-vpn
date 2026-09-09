@@ -251,11 +251,33 @@ cmd_status() {
   (( n > 0 )) || info "Not connected"
 }
 
+cmd_prompt() {  # shell prompt indicator; never noisy, never slow, always exit 0
+  local conns act all total p out=""
+  conns=$(timeout 1 aws-vpn-client list-connections 2> /dev/null) || return 0
+  mapfile -t act < <(jq -r '.[] | select(.["connection-status"] == "Connected") | .["profile-name"]' <<< "$conns" 2> /dev/null)
+  (( ${#act[@]} )) || return 0
+  all=$(timeout 1 aws-vpn-client list-profiles 2> /dev/null \
+    | jq -r 'sort_by(.["imported-at"]) | .[]["profile-name"]' 2> /dev/null) || return 0
+  total=$(grep -c . <<< "$all" || true)
+  if (( total > 0 && ${#act[@]} >= total )); then
+    printf '🔒all\n'
+    return 0
+  fi
+  while IFS= read -r p; do
+    if printf '%s\n' "${act[@]}" | grep -qxF -- "$p"; then
+      out+="${out:+,}${p}"
+    fi
+  done <<< "$all"
+  [[ -n $out ]] && printf '🔒%s\n' "$out"
+  return 0
+}
+
 # --- dispatch ----------------------------------------------------------------
 main() {
   case "${1:-}" in
     -h|--help)    usage; exit 0 ;;
     -v|--version) echo "aws-vpn $VERSION"; exit 0 ;;
+    prompt)       cmd_prompt 2> /dev/null || true; exit 0 ;;
   esac
   require aws-vpn-client "install AWS VPN Client 6.x"
   require jq "install jq"

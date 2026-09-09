@@ -228,6 +228,31 @@ t_disconnect_named_idle() {
   assert_contains "$out" "✗ Not connected to dev" "named disconnect of idle profile message"
 }
 
+t_prompt_none() {
+  run_vpn prompt
+  assert_eq "$rc" 0 "prompt idle exit code"
+  assert_eq "$out" "" "prompt idle prints nothing"
+}
+
+t_prompt_some() {
+  connected stage dev
+  run_vpn prompt
+  assert_eq "$out" "🔒dev,stage" "prompt lists active slugs in import order"
+}
+
+t_prompt_all() {
+  connected dev stage prod prod-us
+  run_vpn prompt
+  assert_eq "$out" "🔒all" "prompt shows all"
+}
+
+t_prompt_daemon_down() {
+  touch "$VPN_STUB_DIR/fail"
+  run_vpn prompt
+  assert_eq "$rc" 0 "prompt exit code with daemon down"
+  assert_eq "$out" "" "prompt silent with daemon down"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
@@ -249,6 +274,10 @@ test_case "disconnect without argument, one active" t_disconnect_single_implicit
 test_case "disconnect without argument, picker" t_disconnect_picker
 test_case "disconnect named profile" t_disconnect_named
 test_case "disconnect named idle profile" t_disconnect_named_idle
+test_case "prompt idle" t_prompt_none
+test_case "prompt some connected" t_prompt_some
+test_case "prompt all connected" t_prompt_all
+test_case "prompt daemon down" t_prompt_daemon_down
 
 echo
 echo "passed: $pass  failed: $fail"
