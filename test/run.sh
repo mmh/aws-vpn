@@ -253,6 +253,30 @@ t_prompt_daemon_down() {
   assert_eq "$out" "" "prompt silent with daemon down"
 }
 
+t_picker_connect() {
+  connected dev
+  out=$(printf '2\n' | VPN_NO_FZF=1 "$root/vpn" 2>&1)
+  rc=$?
+  assert_eq "$rc" 0 "picker exit code"
+  assert_contains "$out" "● dev 12:34" "picker marks connected with uptime"
+  assert_contains "$out" "○ stage" "picker marks disconnected"
+  assert_eq "$(calls connect)" "connect --profile-name stage" "picker choice 2 connects stage"
+}
+
+t_picker_disconnect() {
+  connected dev
+  out=$(printf '1\n' | VPN_NO_FZF=1 "$root/vpn" 2>&1)
+  rc=$?
+  assert_eq "$(calls disconnect)" "disconnect --profile-name dev" "picker choice 1 disconnects dev"
+}
+
+t_picker_cancel() {
+  out=$(VPN_NO_FZF=1 "$root/vpn" 2>&1 < /dev/null)
+  rc=$?
+  assert_eq "$rc" 0 "cancelled picker exits 0"
+  assert_eq "$(calls connect)$(calls disconnect)" "" "cancelled picker does nothing"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
@@ -278,6 +302,9 @@ test_case "prompt idle" t_prompt_none
 test_case "prompt some connected" t_prompt_some
 test_case "prompt all connected" t_prompt_all
 test_case "prompt daemon down" t_prompt_daemon_down
+test_case "picker connects the chosen profile" t_picker_connect
+test_case "picker disconnects the chosen profile" t_picker_disconnect
+test_case "picker cancel does nothing" t_picker_cancel
 
 echo
 echo "passed: $pass  failed: $fail"

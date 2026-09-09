@@ -251,6 +251,22 @@ cmd_status() {
   (( n > 0 )) || info "Not connected"
 }
 
+cmd_select() {  # interactive picker, toggles the chosen profile
+  local act p ts lines=() pick slug
+  act=$(active)
+  while IFS= read -r p; do
+    ts=$(awk -F'\t' -v s="$p" '$1 == s { print $2 }' <<< "$act")
+    if [[ -n $ts ]]; then
+      lines+=("● ${p} $(uptime_since "$ts")")
+    else
+      lines+=("○ ${p}")
+    fi
+  done < <(profiles)
+  pick=$(pick_from "vpn" "${lines[@]}") || return 0
+  slug=$(awk '{ print $2 }' <<< "$pick")
+  cmd_toggle "$slug"
+}
+
 cmd_prompt() {  # shell prompt indicator; never noisy, never slow, always exit 0
   local conns act all total p out=""
   conns=$(timeout 1 aws-vpn-client list-connections 2> /dev/null) || return 0
@@ -282,6 +298,7 @@ main() {
   require aws-vpn-client "install AWS VPN Client 6.x"
   require jq "install jq"
   case "${1:-}" in
+    "")              cmd_select ;;
     all)             cmd_all ;;
     disconnect|down) cmd_disconnect "${2:-}" ;;
     status|st)    cmd_status ;;
