@@ -81,10 +81,17 @@ does that job and is out of scope here.
 ## Migrating from aws-vpn-cli
 
 1. Disconnect everything.
-2. Re-import the profiles under short names, in the order you want (one second apart):
+2. Re-import the profiles under short names, in the order you want (one second apart).
+   The `.ovpn` files saved by the old client (`~/.config/AWSVPNClient/OpenVpnConfigs/`) lack
+   the `auth-federate` line for SAML endpoints; the old client kept that flag in its own
+   profile store. Without it the daemon types the profile as username/password (`auth-type: ad`)
+   and `connect` prompts for a username instead of opening the browser. Append the line first:
    ```bash
+   cd ~/.config/AWSVPNClient/OpenVpnConfigs
+   { cat NebulaDev; echo; echo auth-federate; } | grep -v '^$' > dev.ovpn
    aws-vpn-client delete-profile --profile-name NebulaDev
-   aws-vpn-client import-profile --profile-name dev --config-path ~/.config/AWSVPNClient/OpenVpnConfigs/NebulaDev
+   aws-vpn-client import-profile --profile-name dev --config-path dev.ovpn
+   aws-vpn-client list-profiles | jq -r '.[] | "\(.["profile-name"]) \(.["auth-type"])"'   # expect saml
    ```
 3. Point `~/bin/vpn` and the `.bashrc` `source` line at this repo.
 4. `vpn setup-sudo` artefacts are no longer needed: `/etc/sudoers.d/aws-vpn-cli`,
