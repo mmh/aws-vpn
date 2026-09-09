@@ -300,6 +300,35 @@ t_logs_missing() {
   assert_contains "$out" "No daemon log found in $logdir" "logs missing message"
 }
 
+t_completion_first_word() {
+  # shellcheck source=/dev/null
+  source "$root/vpn.bash"
+  COMP_WORDS=(vpn "") COMP_CWORD=1 COMPREPLY=()
+  _vpn_complete
+  local joined; joined=$(printf '%s\n' "${COMPREPLY[@]}" | sort | paste -sd' ')
+  assert_contains "$joined" "dev" "completion offers slugs"
+  assert_contains "$joined" "status" "completion offers commands"
+  assert_contains "$joined" "prompt" "completion offers prompt"
+}
+
+t_completion_disconnect_arg() {
+  # shellcheck source=/dev/null
+  source "$root/vpn.bash"
+  COMP_WORDS=(vpn disconnect "") COMP_CWORD=2 COMPREPLY=()
+  _vpn_complete
+  local joined; joined=$(printf '%s\n' "${COMPREPLY[@]}" | sort | paste -sd' ')
+  assert_eq "$joined" "all dev prod prod-us stage" "disconnect completes slugs and all"
+}
+
+t_completion_logs_arg() {
+  # shellcheck source=/dev/null
+  source "$root/vpn.bash"
+  COMP_WORDS=(vpn logs p) COMP_CWORD=2 COMPREPLY=()
+  _vpn_complete
+  local joined; joined=$(printf '%s\n' "${COMPREPLY[@]}" | sort | paste -sd' ')
+  assert_eq "$joined" "prod prod-us" "logs completes matching slugs only"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
@@ -330,6 +359,9 @@ test_case "picker disconnects the chosen profile" t_picker_disconnect
 test_case "picker cancel does nothing" t_picker_cancel
 test_case "logs filtered by profile" t_logs_filtered
 test_case "logs without a log file" t_logs_missing
+test_case "completion of first word" t_completion_first_word
+test_case "completion after disconnect" t_completion_disconnect_arg
+test_case "completion after logs" t_completion_logs_arg
 
 echo
 echo "passed: $pass  failed: $fail"
