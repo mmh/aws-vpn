@@ -121,12 +121,34 @@ t_cli_error_json() {
   assert_contains "$out" "✗ Maximum number of connections reached" "CLI error message shown verbatim"
 }
 
+t_status_none() {
+  run_vpn status
+  assert_eq "$rc" 0 "status exit code when idle"
+  assert_eq "$out" "> Not connected" "status idle output"
+}
+
+t_status_connected() {
+  connected prod-us dev
+  run_vpn status
+  assert_eq "$rc" 0 "status exit code"
+  assert_eq "$out" $'✓ Connected to dev (eu-central-1) 12:34\n✓ Connected to prod-us (us-east-2) 12:34' "status lines in import order with region and uptime"
+}
+
+t_status_long_uptime() {
+  connected dev
+  VPN_NOW=1788940817 run_vpn status
+  assert_eq "$out" "✓ Connected to dev (eu-central-1) 01:00:17" "uptime over an hour uses HH:MM:SS"
+}
+
 test_case "prints version" t_version
 test_case "prints help" t_help
 test_case "list follows import order" t_list_order
 test_case "rejects unknown slug" t_unknown_slug
 test_case "reports daemon down" t_daemon_down
 test_case "maps CLI error JSON" t_cli_error_json
+test_case "status when idle" t_status_none
+test_case "status with connections" t_status_connected
+test_case "status uptime over an hour" t_status_long_uptime
 
 echo
 echo "passed: $pass  failed: $fail"

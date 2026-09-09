@@ -86,6 +86,40 @@ require_profile() {  # die unless $1 is a known slug
     || die "Unknown profile '$1'. Available: $(paste -sd' ' <<< "$list")"
 }
 
+is_active() {  # exit 0 when $1 is connected
+  cli list-connections \
+    | jq -e --arg p "$1" 'any(.[]; .["profile-name"] == $p and .["connection-status"] == "Connected")' > /dev/null
+}
+
+active() {  # connected slugs with their last-updated-at, tab separated, import order
+  local conns p
+  conns=$(cli list-connections)
+  [[ $(jq 'length' <<< "$conns") -gt 0 ]] || return 0
+  while IFS= read -r p; do
+    jq -r --arg p "$p" \
+      '.[] | select(.["profile-name"] == $p and .["connection-status"] == "Connected") | "\(.["profile-name"])\t\(.["last-updated-at"])"' \
+      <<< "$conns"
+  done < <(profiles)
+}
+
+uptime_since() {  # $1 = ISO-8601 timestamp -> MM:SS, or HH:MM:SS from one hour
+  local start now secs
+  start=$(date -d "$1" +%s 2> /dev/null) || { printf '?'; return 0; }
+  now="${VPN_NOW:-$(date +%s)}"
+  secs=$(( now - start ))
+  (( secs < 0 )) && secs=0
+  if (( secs >= 3600 )); then
+    printf '%02d:%02d:%02d' $(( secs / 3600 )) $(( secs % 3600 / 60 )) $(( secs % 60 ))
+  else
+    printf '%02d:%02d' $(( secs / 60 )) $(( secs % 60 ))
+  fi
+}
+
+region_of() {  # AWS region parsed from the profile's remote line, empty if unknown
+  cli_text get-config --profile-name "$1" \
+    | sed -nE 's/^remote .*clientvpn\.([a-z0-9-]+)\.amazonaws\.com.*/\1/p' | head -n 1
+}
+
 # --- commands ----------------------------------------------------------------
 cmd_list() {
   local act p
@@ -99,6 +133,17 @@ cmd_list() {
   done < <(profiles)
 }
 
+cmd_status() {
+  local slug ts region n=0
+  while IFS=$'\t' read -r slug ts; do
+    [[ -n $slug ]] || continue
+    n=$(( n + 1 ))
+    region=$(region_of "$slug")
+    success "Connected to ${BOLD}${slug}${RESET}${region:+ ${DIM}(${region})${RESET}} ${DIM}$(uptime_since "$ts")${RESET}"
+  done < <(active)
+  (( n > 0 )) || info "Not connected"
+}
+
 # --- dispatch ----------------------------------------------------------------
 main() {
   case "${1:-}" in
@@ -108,6 +153,7 @@ main() {
   require aws-vpn-client "install AWS VPN Client 6.x"
   require jq "install jq"
   case "${1:-}" in
+    status|st)    cmd_status ;;
     list|ls)      cmd_list ;;
     -*)           usage >&2; exit 1 ;;
     *)            require_profile "$1"; die "not implemented yet" ;;
